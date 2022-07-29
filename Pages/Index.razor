@@ -2,7 +2,7 @@
 @using System.Diagnostics
 @inject HttpClient Http
 
-<PageTitle>ArashiDNS.Hakado | Mili.ONE Network</PageTitle>
+<PageTitle>Latency Test | NovaXNS</PageTitle>
 
 
 @if (dohItems.Count == 0)
@@ -63,13 +63,13 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        var list = await Http.GetStringAsync("https://gh.mili.one/github.com/mili-tan/AuroraDNS.GUI/blob/master/List/DoH.list");
+        var list = await Http.GetStringAsync("novaxns.csv");
         foreach (var item in list.Split(Environment.NewLine))
         {
             if (string.IsNullOrWhiteSpace(item)) continue;
 
             var i = item.Split(",");
-            dohItems.Add(new DohItem {Name = i.LastOrDefault(), URL = i.FirstOrDefault(), Time = 5000});
+            dohItems.Add(new DohItem {URL = i.LastOrDefault(), Name = i.FirstOrDefault(), Time = 5000});
         }
         StateHasChanged();
 
@@ -80,7 +80,7 @@ else
                 if (item.URL == null || string.IsNullOrWhiteSpace(item.URL)) continue;
                 var httpRequestMessage = new HttpRequestMessage
                 {
-                    RequestUri = new Uri(item.URL.TrimEnd() + "?dns=AAABAAABAAAAAAAAA3d3dwdleGFtcGxlA2NvbQAAAQAB"),
+                    RequestUri = new Uri("https://" + item.URL.TrimEnd()),
                     Method = HttpMethod.Get,
                 };
                 httpRequestMessage.SetBrowserRequestMode(BrowserRequestMode.NoCors);
@@ -88,20 +88,31 @@ else
 
                 try
                 {
-                    var sp = Stopwatch.StartNew();
-                    await new HttpClient() {Timeout = TimeSpan.FromMilliseconds(2500)}.SendAsync(httpRequestMessage);
-                    sp.Stop();
-                    item.Time = (int) sp.ElapsedMilliseconds;
+                    try
+                    {
+                        var sp = Stopwatch.StartNew();
+                        await new HttpClient() {Timeout = TimeSpan.FromMilliseconds(2500)}.SendAsync(httpRequestMessage);
+                        sp.Stop();
+                        item.Time = (int) sp.ElapsedMilliseconds;
+                    }
+                    catch (Exception)
+                    {
+                        var sp = Stopwatch.StartNew();
+                        await new HttpClient() {Timeout = TimeSpan.FromMilliseconds(4500)}.SendAsync(httpRequestMessage);
+                        sp.Stop();
+                        item.Time = (int) sp.ElapsedMilliseconds;
+                    }
                 }
                 catch (Exception e)
                 {
                     Console.WriteLine(e);
-                    item.Time = 2500;
+                    item.Time = 4500;
                 }
 
                 dohItems = dohItems.OrderBy(a => a.Time).ToList();
                 StateHasChanged();
             }
+            Thread.Sleep(1000);
         }
     }
 
