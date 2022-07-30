@@ -1,11 +1,16 @@
 ﻿@page "/"
 @using System.Diagnostics
 @inject HttpClient Http
+@inject NavigationManager navigation
 
 <PageTitle>Latency Test | NovaXNS</PageTitle>
 
 
-@if (dohItems.Count == 0)
+@if (string.IsNullOrWhiteSpace(new Uri(navigation.Uri).Query))
+{
+    <p><em>Token not found.</em></p>
+}
+else if (dohItems.Count == 0)
 {
     <p><em>Loading...</em></p>
 }
@@ -24,7 +29,7 @@ else
             {
                 <tr>
                     <td>@item.Name</td>
-                    <td>@item.URL</td>
+                    <td>@("https://"+item.URL?.Trim()+"/"+new Uri(navigation.Uri).Query.Trim().TrimStart('?')+"/dns-query")</td>
                     @switch (item.Time)
                     {
                         case >= 5000:
@@ -63,6 +68,11 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        if (string.IsNullOrWhiteSpace(new Uri(navigation.Uri).Query))
+        {
+            return;
+        }
+
         var list = await Http.GetStringAsync("novaxns.csv");
         foreach (var item in list.Split(Environment.NewLine))
         {
