@@ -28,7 +28,7 @@ else
             @foreach (var item in dohItems)
             {
                 <tr>
-                    <td>@item.Name</td>
+                    <td>@(item.Name?.ToUpper())</td>
                     <td>@("https://"+item.URL?.Trim()+"/"+new Uri(navigation.Uri).Query.Trim().TrimStart('?')+"/dns-query")</td>
                     @switch (item.Time)
                     {
@@ -73,7 +73,8 @@ else
             return;
         }
 
-        var list = await Http.GetStringAsync("novaxns.csv");
+        var uid = new Uri(navigation.Uri).Query.Trim().TrimStart('?');
+        var list = await Http.GetStringAsync($"https://dash.xns.one/api/{uid}/servers.csv");
         foreach (var item in list.Split(Environment.NewLine))
         {
             if (string.IsNullOrWhiteSpace(item)) continue;
