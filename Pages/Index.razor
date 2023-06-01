@@ -80,6 +80,9 @@ else
             if (string.IsNullOrWhiteSpace(item)) continue;
 
             var i = item.Split(",");
+            if (i.FirstOrDefault()!.ToLower().EndsWith("exp") || i.FirstOrDefault()!.ToLower().EndsWith("alpha"))
+                continue;
+            
             dohItems.Add(new DohItem {URL = i.LastOrDefault(), Name = i.FirstOrDefault(), Time = 5000});
         }
         StateHasChanged();
