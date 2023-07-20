@@ -99,7 +99,7 @@ else
             await new HttpClient() {Timeout = TimeSpan.FromMilliseconds(1000)}.SendAsync(httpRequestMessage);
         });
 
-        for (var i = 0; i < 15; i++)
+        for (var i = 0; i < 10; i++)
         {
             foreach (var item in dohItems)
             {
