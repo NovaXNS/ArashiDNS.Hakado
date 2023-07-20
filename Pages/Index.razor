@@ -30,32 +30,35 @@ else
                 <tr>
                     <td>@(item.Name?.ToUpper())</td>
                     <td>@("https://"+item.URL?.Trim()+"/"+new Uri(navigation.Uri).Query.Trim().TrimStart('?')+"/dns-query")</td>
-                    @switch (item.Time)
+                    @if (item.Time != null)
                     {
-                        case >= 5000:
-                            <td>Waiting</td>
-                            break;
-                        case > 2000:
-                            <td style="color: FireBrick">Timeout</td>
-                            break;
-                        case > 1000:
-                            <td style="color: Crimson">@item.Time ms</td>
-                            break;
-                        case > 500:
-                            <td style="color: Tomato">@item.Time ms</td>
-                            break;
-                        case > 250:
-                            <td style="color: orange">@item.Time ms</td>
-                            break;
-                        case > 150:
-                            <td style="color: yellowgreen">@item.Time ms</td>
-                            break;
-                        case <= 150:
-                            <td style="color: green">@item.Time ms</td>
-                            break;
-                        default:
-                            <td >@item.Time</td>
-                            break;
+                        switch (item.Time.Average())
+                        {
+                            case >= 5000:
+                                <td>Waiting</td>
+                                break;
+                            case > 2000:
+                                <td style="color: FireBrick">Timeout</td>
+                                break;
+                            case > 1000:
+                                <td style="color: Crimson">@item.Time ms</td>
+                                break;
+                            case > 500:
+                                <td style="color: Tomato">@item.Time ms</td>
+                                break;
+                            case > 250:
+                                <td style="color: orange">@item.Time ms</td>
+                                break;
+                            case > 150:
+                                <td style="color: yellowgreen">@item.Time ms</td>
+                                break;
+                            case <= 150:
+                                <td style="color: green">@item.Time ms</td>
+                                break;
+                            default:
+                                <td >@item.Time</td>
+                                break;
+                        }
                     }
                 </tr>
             }
@@ -83,7 +86,7 @@ else
             if (i.FirstOrDefault()!.ToLower().EndsWith("exp") || i.FirstOrDefault()!.ToLower().EndsWith("alpha"))
                 continue;
             
-            dohItems.Add(new DohItem {URL = i.LastOrDefault(), Name = i.FirstOrDefault(), Time = 5000});
+            dohItems.Add(new DohItem {URL = i.LastOrDefault(), Name = i.FirstOrDefault(), Time = {5000}});
         }
         StateHasChanged();
 
@@ -119,20 +122,20 @@ else
                         var sp = Stopwatch.StartNew();
                         await new HttpClient() {Timeout = TimeSpan.FromMilliseconds(2500)}.SendAsync(httpRequestMessage);
                         sp.Stop();
-                        item.Time = (int) sp.ElapsedMilliseconds;
+                        item.Time?.Add((int)sp.ElapsedMilliseconds);
                     }
                     catch (Exception)
                     {
                         var sp = Stopwatch.StartNew();
                         await new HttpClient() {Timeout = TimeSpan.FromMilliseconds(4500)}.SendAsync(httpRequestMessage);
                         sp.Stop();
-                        item.Time = (int) sp.ElapsedMilliseconds;
+                        item.Time?.Add((int)sp.ElapsedMilliseconds);
                     }
                 }
                 catch (Exception e)
                 {
                     Console.WriteLine(e);
-                    item.Time = 4500;
+                    item.Time?.Add(4500);
                 }
 
                 dohItems = dohItems.OrderBy(a => a.Time).ToList();
@@ -148,6 +151,6 @@ else
 
         public string? Name { get; set; }
 
-        public int? Time { get; set; }
+        public List<int>? Time { get; set; }
     }
 }
