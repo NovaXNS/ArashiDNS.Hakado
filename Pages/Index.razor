@@ -29,7 +29,7 @@ else
             {
                 <tr>
                     <td>@(item.Name?.ToUpper())</td>
-                    <td>@("https://"+item.URL?.Trim()+"/"+new Uri(navigation.Uri).Query.Trim().TrimStart('?')+"/dns-query")</td>
+                    <td>@(item.URL?.Trim())</td>
                     @if (item.Time != null && item.Time.Any())
                     {
                         switch (item.Time.Min())
