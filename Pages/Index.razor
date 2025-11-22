@@ -1,161 +1,670 @@
 ﻿@page "/"
 @using System.Diagnostics
+@using System.Text.Json.Serialization
 @inject HttpClient Http
-@inject NavigationManager navigation
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
 
 <PageTitle>Latency Test | NovaXNS</PageTitle>
 
+<div class="bg-slate-50 min-h-screen py-8">
+    <div class="max-w-7xl mx-auto px-4">
+        <div class="card p-6 mb-8">
+            <div class="flex flex-col md:flex-row md:items-center justify-between mb-6">
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-900">延迟测试</h1>
+                    <p class="text-gray-600 mt-1">测量您到 DNS 节点的延迟</p>
+                </div>
+                <div class="mt-4 md:mt-0">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-sm text-gray-500">UID:</span>
+                        <span class="text-sm font-medium text-gray-700 bg-gray-100 px-2 py-1 rounded">
+                            @(string.IsNullOrEmpty(FormattedUid) ? "加载中..." : FormattedUid)
+                        </span>
+                    </div>
+                </div>
+            </div>
 
-@if (string.IsNullOrWhiteSpace(new Uri(navigation.Uri).Query))
-{
-    <p><em>Token not found.</em></p>
-}
-else if (dohItems.Count == 0)
-{
-    <p><em>Loading...</em></p>
-}
-else
-{
-    <table class="table">
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>URL</th>
-                <th>Latency</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var item in dohItems)
+            @if (!IsTestComplete)
             {
-                <tr>
-                    <td>@(item.Name?.ToUpper())</td>
-                    <td>@("https://"+item.URL?.Trim()+"/"+new Uri(navigation.Uri).Query.Trim().TrimStart('?')+"/dns-query")</td>
-                    @if (item.Time != null && item.Time.Any())
-                    {
-                        switch (item.Time.Min())
-                        {
-                            case >= 5000:
-                                <td>Waiting</td>
-                                break;
-                            case > 2000:
-                                <td style="color: FireBrick">Timeout</td>
-                                break;
-                            case > 1000:
-                                <td style="color: Crimson">@item.Time.Min() ms</td>
-                                break;
-                            case > 500:
-                                <td style="color: Tomato">@item.Time.Min() ms</td>
-                                break;
-                            case > 250:
-                                <td style="color: orange">@item.Time.Min() ms</td>
-                                break;
-                            case > 150:
-                                <td style="color: yellowgreen">@item.Time.Min() ms</td>
-                                break;
-                            case <= 150:
-                                <td style="color: green">@item.Time.Min() ms</td>
-                                break;
-                            default:
-                                <td>@item.Time.Min()</td>
-                                break;
-                        }
-                    }
-                </tr>
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <i class="fas fa-info-circle text-blue-500 mt-0.5"></i>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-blue-800">测试进行中</h3>
+                            <div class="mt-2 text-sm text-blue-700">
+                                <p>我们正在测量您到 DNS 节点的往返时间。此过程可能需要几分钟。</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             }
-        </tbody>
-    </table>
-}
+
+            @if (ShowNetworkInfo)
+            {
+                <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <i class="fas fa-network-wired text-green-500 mt-0.5"></i>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-green-800">您当前网络</h3>
+                            <div class="mt-2 text-sm text-green-700">
+                                <p>IP 地址: @UserIp</p>
+                                <p>位置: @UserLocation</p>
+                                <p>ISP: @UserIsp</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <div class="mb-6">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-sm font-medium text-gray-700">测试进度</span>
+                    <span class="text-sm text-gray-500">@CompletedTests/10 测试完成</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill bg-blue-500" style="width: @(ProgressPercentage)%"></div>
+                </div>
+            </div>
+
+            @if (IsLoading)
+            {
+                <div class="flex justify-center items-center py-12">
+                    <div class="text-center">
+                        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+                        <p class="mt-4 text-gray-600">正在加载节点数据...</p>
+                    </div>
+                </div>
+            }
+            else if (dohItems.Count == 0)
+            {
+                <div class="text-center py-12">
+                    <i class="fas fa-exclamation-triangle text-yellow-500 text-4xl mb-4"></i>
+                    <h3 class="text-lg font-medium text-gray-900 mb-2">未找到节点</h3>
+                    <p class="text-gray-600">在您的配置中未找到有效的节点。</p>
+                </div>
+            }
+            else
+            {
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>名称</th>
+                                <th>URL</th>
+                                <th>位置</th>
+                                <th>延迟</th>
+                                <th>状态</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in dohItems.OrderBy(x => x.Time?.Min() ?? 5000))
+                            {
+                                var minLatency = item.Time?.Min() ?? 5000;
+                                var locationText = GetLocationText(item);
+
+                                <tr>
+                                    <td class="font-medium">@(item.Name?.ToUpper())</td>
+                                    <td class="text-gray-600">@(item.URL?.Trim())</td>
+                                    <td class="text-gray-600">@locationText</td>
+                                    <td>
+                                        <div class="flex items-center">
+                                            <span class="@GetLatencyClass(minLatency) badge">@GetLatencyText(minLatency)</span>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="tooltip">
+                                            <i class="fas fa-circle @GetStatusColor(minLatency) text-xs"></i>
+                                            <span class="tooltip-text">已完成 @(item.Time?.Count ?? 0) 次测试。最佳时间: @minLatency ms</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="card p-5">
+                <div class="flex items-center">
+                    <div class="rounded-full bg-blue-100 p-3 mr-4">
+                        <i class="fas fa-server text-blue-600 m-1"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-medium text-gray-600">节点总数</p>
+                        <p class="text-2xl font-bold text-gray-900">@dohItems.Count</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card p-5">
+                <div class="flex items-center">
+                    <div class="rounded-full bg-green-100 p-3 mr-4">
+                        <i class="fas fa-bolt text-green-600 m-1"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-medium text-gray-600">最快节点</p>
+                        <p class="text-2xl font-bold text-gray-900">
+                            @(dohItems.Count > 0 ? $"{dohItems.Min(x => x.Time?.Min() ?? 5000)} ms" : "-")
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card p-5">
+                <div class="flex items-center">
+                    <div class="rounded-full bg-purple-100 p-3 mr-4">
+                        <i class="fas fa-clock text-purple-600 m-1"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-medium text-gray-600">平均延迟</p>
+                        <p class="text-2xl font-bold text-gray-900">@MedianLatency ms</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card p-6 mb-8">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold text-gray-900">节点位置分布</h2>
+                <div class="text-sm text-gray-500">
+                    <span>@MappedServers</span> / <span>@dohItems.Count</span> 个节点已定位
+                </div>
+            </div>
+            <div class="map-container">
+                <div id="map" style="height: 400px; border-radius: 0.5rem; z-index: 1;"></div>
+                <div class="map-legend">
+                    <div class="text-sm font-medium mb-2">延迟 (毫秒)</div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #10b981;"></div>
+                        <span>&lt; 150</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #84cc16;"></div>
+                        <span>150 - 250</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #eab308;"></div>
+                        <span>250 - 500</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #f97316;"></div>
+                        <span>500 - 1000</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #ef4444;"></div>
+                        <span>&gt; 1000</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #991b1b;"></div>
+                        <span>超时</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="text-center text-sm text-gray-500 mt-8">
+            <p>© NovaXNS - Latency Test</p>
+        </div>
+    </div>
+</div>
 
 @code {
+
     private List<DohItem> dohItems = new();
+    private string FormattedUid = "";
+    private bool IsLoading = true;
+    private bool ShowNetworkInfo = false;
+    private bool IsTestComplete = false;
+    private int CompletedTests = 0;
+    private int ProgressPercentage => (CompletedTests * 100) / 10;
+    private string UserIp = "加载中...";
+    private string UserLocation = "加载中...";
+    private string UserIsp = "加载中...";
+    private int MedianLatency = 0;
+    private int MappedServers = 0;
 
     protected override async Task OnInitializedAsync()
     {
-        if (string.IsNullOrWhiteSpace(new Uri(navigation.Uri).Query))
+        await Initialize();
+    }
+
+    private async Task Initialize()
+    {
+        var uri = new Uri(Navigation.Uri);
+        var query = uri.Query;
+
+        if (string.IsNullOrWhiteSpace(query))
         {
+            FormattedUid = "未找到";
+            IsLoading = false;
             return;
         }
 
-        var uid = new Uri(navigation.Uri).Query.Trim().TrimStart('?');
-        var list = await Http.GetStringAsync($"https://dash.xns.one/api/{uid}/servers.csv");
-        foreach (var item in list.Split(Environment.NewLine))
-        {
-            if (string.IsNullOrWhiteSpace(item)) continue;
+        var uid = query.Trim().TrimStart('?');
+        FormattedUid = FormatUid(uid);
 
-            var i = item.Split(",");
-            if (i.FirstOrDefault()!.ToLower().EndsWith("exp") || i.FirstOrDefault()!.ToLower().EndsWith("alpha"))
-                continue;
+        await GetUserNetworkInfo();
+        await LoadServerList(uid);
 
-            var dohItem = new DohItem
-            {
-                URL = i.LastOrDefault(), Name = i.FirstOrDefault(),
-                Time = new List<int> {5000}
-            };
-            dohItems.Add(dohItem);
-        }
+        IsLoading = false;
         StateHasChanged();
 
-        Parallel.ForEach(dohItems, async i =>
+        if (dohItems.Count > 0)
+        {
+            await InitializeMap();
+            Task.Run(async () => await GetServersLocation());
+            await StartLatencyTests();
+        }
+
+        IsTestComplete = true;
+    }
+
+    private string FormatUid(string uid)
+    {
+        if (string.IsNullOrEmpty(uid) || uid.Length <= 10)
+            return uid;
+        return $"{uid.Substring(0, 5)}...{uid.Substring(uid.Length - 5)}";
+    }
+
+    private async Task GetUserNetworkInfo()
+    {
+        try
+        {
+            var endpoints = new[]
+            {
+                "https://myip.xns.one/geoip",
+                "https://api.ip.sb/geoip"
+            };
+
+            foreach (var endpoint in endpoints)
+            {
+                try
+                {
+                    var response = await Http.GetFromJsonAsync<GeoIpResponse>(endpoint);
+                    if (response != null)
+                    {
+                        UserIp = $"IP地址: {response.ip}";
+
+                        var locationParts = new List<string>();
+                        if (!string.IsNullOrEmpty(response.city) && response.city != "Unknown")
+                            locationParts.Add(response.city);
+                        if (!string.IsNullOrEmpty(response.region) && response.region != "Unknown")
+                            locationParts.Add(response.region);
+                        if (!string.IsNullOrEmpty(response.country) && response.country != "Unknown")
+                            locationParts.Add(response.country);
+
+                        UserLocation = $"位置: {(locationParts.Any() ? string.Join(", ", locationParts) : "未知")}";
+                        UserIsp = $"ISP: {response.organization ?? "未知"}";
+
+                        ShowNetworkInfo = true;
+                        StateHasChanged();
+                        break;
+                    }
+                }
+                catch
+                {
+                    continue;
+                }
+            }
+        }
+        catch
+        {
+            UserIp = "IP地址: 获取失败";
+            UserLocation = "位置: 获取失败";
+            UserIsp = "ISP: 获取失败";
+            ShowNetworkInfo = true;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadServerList(string uid)
+    {
+        var endpoints = new[]
+        {
+            $"https://dash.xns.one/api/{uid}/servers.csv",
+            $"https://novadash.azurewebsites.net/api/{uid}/servers.csv"
+        };
+
+        string csvData = null;
+
+        foreach (var endpoint in endpoints)
         {
             try
             {
-                var httpRequestMessage = new HttpRequestMessage
-                {
-                    RequestUri = new Uri("https://" + i.URL?.TrimEnd()),
-                    Method = HttpMethod.Get,
-                };
-                httpRequestMessage.SetBrowserRequestMode(BrowserRequestMode.NoCors);
-                httpRequestMessage.SetBrowserRequestCache(BrowserRequestCache.NoCache);
-                await new HttpClient() {Timeout = TimeSpan.FromMilliseconds(1000)}.SendAsync(httpRequestMessage);
+                using var cts = new CancellationTokenSource(3000);
+                csvData = await Http.GetStringAsync(endpoint, cts.Token);
+                if (!string.IsNullOrEmpty(csvData)) break;
             }
-            catch (Exception e)
+            catch
             {
-                Console.WriteLine(e);
+                continue;
             }
+        }
+
+        if (!string.IsNullOrEmpty(csvData))
+        {
+            var lines = csvData.Split('\n');
+            foreach (var line in lines)
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
+                var parts = line.Split(',');
+                if (parts.Length < 2) continue;
+
+                var name = parts[0].Trim();
+                var url = parts[1].Trim();
+
+                if (name.ToLower().EndsWith("exp") || name.ToLower().EndsWith("alpha"))
+                    continue;
+
+                dohItems.Add(new DohItem
+                {
+                    Name = name,
+                    URL = url,
+                    Time = new List<int> { 5000 }
+                });
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task InitializeMap()
+    {
+        await JSRuntime.InvokeVoidAsync("eval", @"
+            if (typeof window.serverMarkers === 'undefined') {
+                window.serverMarkers = {};
+            }
+
+            if (typeof window.initMap === 'undefined') {
+                window.initMap = function() {
+                    window.map = L.map('map').setView([20, 0], 2);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '&copy; <a href=""https://www.openstreetmap.org/copyright"">OpenStreetMap</a> contributors'
+                    }).addTo(window.map);
+                };
+
+                window.addServerToMap = function(server) {
+                    if (!window.map) return;
+
+                    const latency = server.minLatency || 5000;
+                    const color = getLatencyColor(latency);
+                    const size = getMarkerSize(latency);
+                    const lat = server.lat || 20;
+                    const lng = server.lng || 0;
+
+                    const marker = L.circleMarker([lat, lng], {
+                        color: color,
+                        fillColor: color,
+                        fillOpacity: 0.7,
+                        radius: size,
+                        weight: 2
+                    }).addTo(window.map);
+
+                    const latencyText = latency >= 5000 ? '等待中' :
+                                       latency > 2000 ? '超时' : `${latency} ms`;
+
+                    let locationText = '';
+                    if (server.city && server.city !== 'Unknown') {
+                        locationText += server.city;
+                    }
+                    if (server.country && server.country !== 'Unknown') {
+                        if (locationText) locationText += ', ';
+                        locationText += server.country;
+                    }
+
+                    marker.bindPopup(`
+                        <div class=""p-2"">
+                            <h3 class=""font-bold"">${server.name.toUpperCase()}</h3>
+                            <p class=""text-sm text-gray-600"">${server.url}</p>
+                            <div class=""mt-2"">
+                                <span class=""inline-block px-2 py-1 text-xs rounded-full"" style=""background-color: ${color}; color: white;"">
+                                    ${latencyText}
+                                </span>
+                            </div>
+                            <p class=""text-xs mt-2"">位置: ${locationText || '未知'}</p>
+                        </div>
+                    `);
+
+                    // 保存标记引用
+                    window.serverMarkers[server.name] = marker;
+                };
+
+                window.updateServerMarker = function(server) {
+                    const marker = window.serverMarkers[server.name];
+                    if (!marker) return;
+
+                    const latency = server.minLatency || 5000;
+                    const color = getLatencyColor(latency);
+                    const size = getMarkerSize(latency);
+
+                    marker.setStyle({
+                        color: color,
+                        fillColor: color,
+                        radius: size
+                    });
+
+                    const latencyText = latency >= 5000 ? '等待中' :
+                                       latency > 2000 ? '超时' : `${latency} ms`;
+
+                    let locationText = '';
+                    if (server.city && server.city !== 'Unknown') {
+                        locationText += server.city;
+                    }
+                    if (server.country && server.country !== 'Unknown') {
+                        if (locationText) locationText += ', ';
+                        locationText += server.country;
+                    }
+
+                    marker.setPopupContent(`
+                        <div class=""p-2"">
+                            <h3 class=""font-bold"">${server.name.toUpperCase()}</h3>
+                            <p class=""text-sm text-gray-600"">${server.url}</p>
+                            <div class=""mt-2"">
+                                <span class=""inline-block px-2 py-1 text-xs rounded-full"" style=""background-color: ${color}; color: white;"">
+                                    ${latencyText}
+                                </span>
+                            </div>
+                            <p class=""text-xs mt-2"">位置: ${locationText || '未知'}</p>
+                        </div>
+                    `);
+                };
+
+                function getLatencyColor(latency) {
+                    if (latency >= 5000 || latency > 2000) return '#991b1b';
+                    if (latency > 1000) return '#ef4444';
+                    if (latency > 500) return '#f97316';
+                    if (latency > 250) return '#eab308';
+                    if (latency > 150) return '#84cc16';
+                    return '#10b981';
+                }
+
+                function getMarkerSize(latency) {
+                    if (latency >= 5000 || latency > 2000) return 8;
+                    if (latency > 1000) return 10;
+                    if (latency > 500) return 12;
+                    if (latency > 250) return 14;
+                    if (latency > 150) return 16;
+                    return 18;
+                }
+            }
+        ");
+
+        await JSRuntime.InvokeVoidAsync("initMap");
+    }
+
+    private async Task GetServersLocation()
+    {
+        MappedServers = 0;
+        StateHasChanged();
+
+        foreach (var server in dohItems)
+        {
+            try
+            {
+                // 解析域名获取IP
+                var ip = await ResolveDomain(server.URL);
+                if (!string.IsNullOrEmpty(ip))
+                {
+                    // 获取IP地理位置
+                    var location = await GetIPLocation(ip);
+                    if (location != null)
+                    {
+                        server.Lat = location.Latitude;
+                        server.Lng = location.Longitude;
+                        server.City = location.City;
+                        server.Country = location.Country;
+                        server.IP = ip;
+                    
+                        // 在地图上添加标记
+                        await AddServerToMap(server);
+                        MappedServers++;
+                        StateHasChanged();
+                    
+                        // 添加短暂延迟避免请求过于频繁
+                        await Task.Delay(200);
+                        continue;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"获取服务器 {server.Name} 位置失败: {ex.Message}");
+            }
+        
+            // // 使用默认位置作为后备
+            // server.Lat = 20 + (Random.Shared.NextDouble() - 0.5) * 30;
+            // server.Lng = (Random.Shared.NextDouble() - 0.5) * 60;
+            await AddServerToMap(server);
+            MappedServers++;
+            StateHasChanged();
+        
+            // 添加短暂延迟避免请求过于频繁
+            await Task.Delay(100);
+        }
+    }
+
+    private async Task<string> ResolveDomain(string url)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(url)) return null;
+
+            var domain = url.Replace("https://", "").Replace("http://", "").Split('/')[0];
+            var dohUrl = $"https://223.5.5.5/resolve?name={domain}&type=A";
+
+            using var client = new HttpClient();
+            client.DefaultRequestHeaders.Add("Accept", "application/dns-json");
+
+            var response = await client.GetStringAsync(dohUrl);
+            var dnsResponse = System.Text.Json.JsonSerializer.Deserialize<DnsResponse>(response);
+
+            if (dnsResponse?.Answer != null && dnsResponse.Answer.Count > 0)
+            {
+                var aRecord = dnsResponse.Answer.FirstOrDefault(a => a.Type == 1);
+                return aRecord?.Data;
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"解析域名 {url} 失败: {ex.Message}");
+            return null;
+        }
+    }
+
+    private async Task<GeoLocation> GetIPLocation(string ip)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(ip)) return null;
+
+            using var client = new HttpClient();
+            var response = await client.GetStringAsync($"https://api.ip.sb/geoip/{ip}");
+            var geoData = System.Text.Json.JsonSerializer.Deserialize<GeoLocation>(response);
+
+            return geoData;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"获取IP {ip} 位置失败: {ex.Message}");
+            return null;
+        }
+    }
+
+    private async Task AddServerToMap(DohItem server)
+    {
+        var minLatency = server.Time?.Min() ?? 5000;
+
+        await JSRuntime.InvokeVoidAsync("addServerToMap", new
+        {
+            name = server.Name,
+            url = server.URL,
+            times = server.Time?.ToArray(),
+            lat = server.Lat,
+            lng = server.Lng,
+            city = server.City,
+            country = server.Country,
+            minLatency = minLatency
         });
+    }
+
+    private async Task UpdateServerOnMap(DohItem server)
+    {
+        var minLatency = server.Time?.Min() ?? 5000;
+
+        await JSRuntime.InvokeVoidAsync("updateServerMarker", new
+        {
+            name = server.Name,
+            city = server.City,
+            country = server.Country,
+            minLatency = minLatency
+        });
+    }
+
+    private async Task StartLatencyTests()
+    {
+        // 初始并行测试
+        await Parallel.ForEachAsync(dohItems, async (server, cancellationToken) =>
+        {
+            await TestServerLatencyInitial(server);
+            await UpdateServerOnMap(server);
+        });
+
+        // 更新初始测试后的状态
+        CompletedTests = 1;
+        UpdateStatistics();
+        StateHasChanged();
 
         for (var i = 0; i < 10; i++)
         {
             try
             {
-                foreach (var item in dohItems)
+                await Parallel.ForEachAsync(dohItems, async (server, cancellationToken) =>
                 {
-                    if (item.URL == null || string.IsNullOrWhiteSpace(item.URL)) continue;
-                    var httpRequestMessage = new HttpRequestMessage
-                    {
-                        RequestUri = new Uri("https://" + item.URL.TrimEnd()),
-                        Method = HttpMethod.Get,
-                    };
-                    httpRequestMessage.SetBrowserRequestMode(BrowserRequestMode.NoCors);
-                    httpRequestMessage.SetBrowserRequestCache(BrowserRequestCache.NoCache);
+                    await TestServerLatencyRound(server);
+                    await UpdateServerOnMap(server);
+                });
 
-                    try
-                    {
-                        try
-                        {
-                            var sp = Stopwatch.StartNew();
-                            await new HttpClient() {Timeout = TimeSpan.FromMilliseconds(2500)}.SendAsync(httpRequestMessage);
-                            sp.Stop();
-                            item.Time?.Add((int)sp.ElapsedMilliseconds);
-                        }
-                        catch (Exception)
-                        {
-                            var sp = Stopwatch.StartNew();
-                            await new HttpClient() {Timeout = TimeSpan.FromMilliseconds(4500)}.SendAsync(httpRequestMessage);
-                            sp.Stop();
-                            item.Time?.Add((int)sp.ElapsedMilliseconds);
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                        Console.WriteLine(e);
-                        item.Time?.Add(4500);
-                    }
+                // 每轮测试后排序
+                dohItems = dohItems.OrderBy(a => a.Time?.Min() ?? 5000).ToList();
 
-                    dohItems = dohItems.OrderBy(a => a.Time!.Min()).ToList();
-                    StateHasChanged();
+                CompletedTests = i + 2;
+                UpdateStatistics();
+                StateHasChanged();
+
+                if (i < 8)
+                {
+                    await Task.Delay(1000);
                 }
-                Thread.Sleep(1000);
             }
             catch (Exception e)
             {
@@ -164,12 +673,354 @@ else
         }
     }
 
+    private async Task TestServerLatencyInitial(DohItem server)
+    {
+        try
+        {
+            var httpRequestMessage = new HttpRequestMessage
+            {
+                RequestUri = new Uri("https://" + server.URL?.TrimEnd()),
+                Method = HttpMethod.Get,
+            };
+
+            httpRequestMessage.SetBrowserRequestMode(BrowserRequestMode.NoCors);
+            httpRequestMessage.SetBrowserRequestCache(BrowserRequestCache.NoCache);
+
+            try
+            {
+                var sp = Stopwatch.StartNew();
+                using var httpClient = new HttpClient() { Timeout = TimeSpan.FromMilliseconds(1000) };
+                await httpClient.SendAsync(httpRequestMessage);
+                sp.Stop();
+                server.Time?.Add((int)sp.ElapsedMilliseconds);
+            }
+            catch (Exception)
+            {
+                server.Time?.Add(5000);
+            }
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            server.Time?.Add(5000);
+        }
+    }
+
+    private async Task TestServerLatencyRound(DohItem server)
+    {
+        try
+        {
+            var httpRequestMessage = new HttpRequestMessage
+            {
+                RequestUri = new Uri("https://" + server.URL?.TrimEnd()),
+                Method = HttpMethod.Get,
+            };
+
+            httpRequestMessage.SetBrowserRequestMode(BrowserRequestMode.NoCors);
+            httpRequestMessage.SetBrowserRequestCache(BrowserRequestCache.NoCache);
+
+            try
+            {
+                // 首先尝试短超时
+                var sp = Stopwatch.StartNew();
+                using var shortTimeoutClient = new HttpClient() { Timeout = TimeSpan.FromMilliseconds(2500) };
+                await shortTimeoutClient.SendAsync(httpRequestMessage);
+                sp.Stop();
+                server.Time?.Add((int)sp.ElapsedMilliseconds);
+            }
+            catch (Exception)
+            {
+                // 短超时失败，尝试长超时
+                try
+                {
+                    var sp = Stopwatch.StartNew();
+                    using var longTimeoutClient = new HttpClient() { Timeout = TimeSpan.FromMilliseconds(4500) };
+                    await longTimeoutClient.SendAsync(httpRequestMessage);
+                    sp.Stop();
+                    server.Time?.Add((int)sp.ElapsedMilliseconds);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                    server.Time?.Add(4500);
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            server.Time?.Add(4500);
+        }
+    }
+
+    private void UpdateStatistics()
+    {
+        var validLatencies = dohItems
+            .SelectMany(server => server.Time ?? new List<int>())
+            .Where(time => time < 5000 && time <= 2000)
+            .ToList();
+
+        if (validLatencies.Any())
+        {
+            var sorted = validLatencies.OrderBy(t => t).ToList();
+            var mid = sorted.Count / 2;
+            MedianLatency = sorted.Count % 2 == 0 ?
+                (sorted[mid - 1] + sorted[mid]) / 2 :
+                sorted[mid];
+        }
+    }
+
+    private string GetLocationText(DohItem item)
+    {
+        var locationParts = new List<string>();
+        if (!string.IsNullOrEmpty(item.City) && item.City != "Unknown")
+            locationParts.Add(item.City);
+        if (!string.IsNullOrEmpty(item.Country) && item.Country != "Unknown")
+            locationParts.Add(item.Country);
+
+        return locationParts.Any() ? string.Join(", ", locationParts) : "";
+    }
+
+    private string GetLatencyClass(int latency)
+    {
+        return latency switch
+        {
+            >= 5000 => "badge-waiting",
+            > 2000 => "badge-timeout",
+            > 1000 => "badge-high",
+            > 500 => "badge-medium",
+            > 250 => "badge-low",
+            > 150 => "badge-ok",
+            _ => "badge-optimal"
+        };
+    }
+
+    private string GetLatencyText(int latency)
+    {
+        if (latency >= 5000) return "等待中";
+        if (latency > 2000) return "超时";
+        return $"{latency} ms";
+    }
+
+    private string GetStatusColor(int latency)
+    {
+        return latency switch
+        {
+            <= 150 => "text-green-500",
+            <= 250 => "text-lime-500",
+            <= 500 => "text-yellow-500",
+            _ => "text-red-500"
+        };
+    }
+
     public class DohItem
     {
         public string? URL { get; set; }
-
         public string? Name { get; set; }
-
         public List<int>? Time { get; set; }
+        public double Lat { get; set; }
+        public double Lng { get; set; }
+        public string? City { get; set; }
+        public string? Country { get; set; }
+        public string? IP { get; set; }
+    }
+
+    private class GeoIpResponse
+    {
+        public string ip { get; set; } = "";
+        public string city { get; set; } = "";
+        public string region { get; set; } = "";
+        public string country { get; set; } = "";
+        public string organization { get; set; } = "";
+    }
+
+    private class DnsResponse
+    {
+        public List<DnsAnswer>? Answer { get; set; }
+    }
+
+    private class DnsAnswer
+    {
+        [JsonPropertyName("name")]
+        public string? Name { get; set; }
+        [JsonPropertyName("type")]
+        public int Type { get; set; }
+        public int TTL { get; set; }
+        [JsonPropertyName("data")]
+        public string? Data { get; set; }
+    }
+
+    public class GeoLocation
+    {
+        [JsonPropertyName("ip")]
+        public string? Ip { get; set; }
+
+        [JsonPropertyName("latitude")]
+        public double Latitude { get; set; }
+
+        [JsonPropertyName("longitude")]
+        public double Longitude { get; set; }
+
+        [JsonPropertyName("city")]
+        public string? City { get; set; }
+
+        [JsonPropertyName("country")]
+        public string? Country { get; set; }
+
+        [JsonPropertyName("organization")]
+        public string? Organization { get; set; }
     }
 }
+
+<style>
+    .card {
+        background: white;
+        border-radius: 0.75rem;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+        border: 1px solid #e5e7eb;
+    }
+
+    .table-container {
+        overflow-x: auto;
+    }
+
+    .table {
+        width: 100%;
+        font-size: 0.875rem;
+        text-align: left;
+        border-collapse: collapse;
+    }
+
+        .table th {
+            background-color: #f9fafb;
+            color: #6b7280;
+            font-weight: 500;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+            padding: 0.75rem 1.5rem;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .table td {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid #f3f4f6;
+        }
+
+        .table tbody tr:hover {
+            background-color: #f9fafb;
+        }
+
+    .badge {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 9999px;
+        padding: 0.25rem 0.75rem;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+
+    .badge-waiting {
+        background-color: #fef3c7;
+        color: #92400e;
+    }
+
+    .badge-timeout {
+        background-color: #fee2e2;
+        color: #991b1b;
+    }
+
+    .badge-high {
+        background-color: #fecaca;
+        color: #991b1b;
+    }
+
+    .badge-medium {
+        background-color: #fed7aa;
+        color: #9a3412;
+    }
+
+    .badge-low {
+        background-color: #fde68a;
+        color: #92400e;
+    }
+
+    .badge-ok {
+        background-color: #d9f99d;
+        color: #3f6212;
+    }
+
+    .badge-optimal {
+        background-color: #d1fae5;
+        color: #065f46;
+    }
+
+    .progress-bar {
+        height: 6px;
+        background-color: #e5e7eb;
+        border-radius: 3px;
+        overflow: hidden;
+        margin-top: 0.5rem;
+    }
+
+    .progress-fill {
+        height: 100%;
+        border-radius: 3px;
+    }
+
+    .tooltip {
+        position: relative;
+        display: inline-block;
+    }
+
+        .tooltip .tooltip-text {
+            visibility: hidden;
+            width: 200px;
+            background-color: #374151;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 8px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -100px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 0.75rem;
+        }
+
+        .tooltip:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
+
+    .map-container {
+        position: relative;
+    }
+
+    .map-legend {
+        position: absolute;
+        bottom: 20px;
+        right: 20px;
+        background: white;
+        padding: 10px;
+        border-radius: 5px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        z-index: 1000;
+    }
+
+    .legend-item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 5px;
+    }
+
+    .legend-color {
+        width: 20px;
+        height: 10px;
+        margin-right: 5px;
+        border-radius: 2px;
+    }
+</style>
