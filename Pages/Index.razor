@@ -652,14 +652,13 @@
                 await Parallel.ForEachAsync(dohItems, async (server, cancellationToken) =>
                 {
                     await TestServerLatencyRound(server);
+                    dohItems = dohItems.OrderBy(a => a.Time?.Min() ?? 5000).ToList();
+                    UpdateStatistics();
                     await UpdateServerOnMap(server);
+                    StateHasChanged();
                 });
 
-                // 每轮测试后排序
-                dohItems = dohItems.OrderBy(a => a.Time?.Min() ?? 5000).ToList();
-
-                CompletedTests = i + 2;
-                UpdateStatistics();
+                CompletedTests = i + 1;
                 StateHasChanged();
 
                 if (i < 8)
