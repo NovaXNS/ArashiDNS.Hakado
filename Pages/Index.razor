@@ -290,7 +290,7 @@
                     var response = await Http.GetFromJsonAsync<GeoIpResponse>(endpoint);
                     if (response != null)
                     {
-                        UserIp = $"IP地址: {response.ip}";
+                        UserIp = response.ip;
 
                         var locationParts = new List<string>();
                         if (!string.IsNullOrEmpty(response.city) && response.city != "Unknown")
@@ -300,8 +300,8 @@
                         if (!string.IsNullOrEmpty(response.country) && response.country != "Unknown")
                             locationParts.Add(response.country);
 
-                        UserLocation = $"位置: {(locationParts.Any() ? string.Join(", ", locationParts) : "未知")}";
-                        UserIsp = $"ISP: {response.organization ?? "未知"}";
+                        UserLocation = $"{(locationParts.Any() ? string.Join(", ", locationParts) : "未知")}";
+                        UserIsp = $"{response.organization ?? "未知"}";
 
                         ShowNetworkInfo = true;
                         StateHasChanged();
@@ -316,9 +316,9 @@
         }
         catch
         {
-            UserIp = "IP地址: 获取失败";
-            UserLocation = "位置: 获取失败";
-            UserIsp = "ISP: 获取失败";
+            UserIp = "获取失败";
+            UserLocation = "获取失败";
+            UserIsp = "获取失败";
             ShowNetworkInfo = true;
             StateHasChanged();
         }
@@ -625,6 +625,7 @@
         {
             name = server.Name,
             city = server.City,
+            url = server.URL,
             country = server.Country,
             minLatency = minLatency
         });
@@ -688,21 +689,19 @@
 
             try
             {
-                var sp = Stopwatch.StartNew();
                 using var httpClient = new HttpClient() { Timeout = TimeSpan.FromMilliseconds(1000) };
                 await httpClient.SendAsync(httpRequestMessage);
-                sp.Stop();
-                server.Time?.Add((int)sp.ElapsedMilliseconds);
+                // server.Time?.Add((int)sp.ElapsedMilliseconds);
             }
             catch (Exception)
             {
-                server.Time?.Add(5000);
+                // server.Time?.Add(5000);
             }
         }
         catch (Exception e)
         {
             Console.WriteLine(e);
-            server.Time?.Add(5000);
+            // server.Time?.Add(5000);
         }
     }
 
