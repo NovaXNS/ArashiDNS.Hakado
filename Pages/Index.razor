@@ -127,7 +127,7 @@
                                     <td>
                                         <div class="tooltip">
                                             <i class="fas fa-circle @GetStatusColor(minLatency) text-xs"></i>
-                                            <span class="tooltip-text">已完成 @(item.Time?.Count ?? 0) 次测试。最佳时间: @minLatency ms</span>
+                                            <span class="tooltip-text">已完成 @(item.Time?.Count - 1 ?? 0) 次测试。最佳时间: @minLatency ms</span>
                                         </div>
                                     </td>
                                 </tr>
