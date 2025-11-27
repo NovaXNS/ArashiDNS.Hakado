@@ -700,9 +700,8 @@
 
             try
             {
-                using var httpClient = new HttpClient() { Timeout = TimeSpan.FromMilliseconds(1000) };
+                using var httpClient = new HttpClient() { Timeout = TimeSpan.FromMilliseconds(350) };
                 await httpClient.SendAsync(httpRequestMessage);
-                // server.Time?.Add((int)sp.ElapsedMilliseconds);
             }
             catch (Exception)
             {
@@ -712,7 +711,6 @@
         catch (Exception e)
         {
             Console.WriteLine(e);
-            // server.Time?.Add(5000);
         }
     }
 
