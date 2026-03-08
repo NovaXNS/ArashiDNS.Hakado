@@ -302,8 +302,8 @@
                         UserIp = response.ip;
 
                         var locationParts = new List<string>();
-                        if (!string.IsNullOrEmpty(response.city) && response.city != "Unknown")
-                            locationParts.Add(response.city);
+                        // if (!string.IsNullOrEmpty(response.city) && response.city != "Unknown")
+                        //     locationParts.Add(response.city);
                         if (!string.IsNullOrEmpty(response.region) && response.region != "Unknown")
                             locationParts.Add(response.region);
                         if (!string.IsNullOrEmpty(response.country) && response.country != "Unknown")
