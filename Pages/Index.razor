@@ -13,7 +13,7 @@
             <div class="flex flex-col md:flex-row md:items-center justify-between mb-6">
                 <div>
                     <h1 class="text-2xl font-bold text-gray-900">延迟测试</h1>
-                    <p class="text-gray-600 mt-1">测量您到 DNS 节点的延迟</p>
+                    <p class="text-gray-600 mt-1">测量您到服务节点的延迟</p>
                 </div>
                 <div class="mt-4 md:mt-0">
                     <div class="flex items-center space-x-2">
@@ -35,7 +35,7 @@
                         <div class="ml-3">
                             <h3 class="text-sm font-medium text-blue-800">测试进行中</h3>
                             <div class="mt-2 text-sm text-blue-700">
-                                <p>我们正在测量您到 DNS 节点的往返时间。此过程可能需要几分钟。</p>
+                                <p>我们正在测量您到服务节点的往返时间。此过程可能需要几分钟。</p>
                             </div>
                         </div>
                     </div>
@@ -700,9 +700,8 @@
 
             try
             {
-                using var httpClient = new HttpClient() { Timeout = TimeSpan.FromMilliseconds(1000) };
+                using var httpClient = new HttpClient() { Timeout = TimeSpan.FromMilliseconds(350) };
                 await httpClient.SendAsync(httpRequestMessage);
-                // server.Time?.Add((int)sp.ElapsedMilliseconds);
             }
             catch (Exception)
             {
@@ -712,7 +711,6 @@
         catch (Exception e)
         {
             Console.WriteLine(e);
-            // server.Time?.Add(5000);
         }
     }
 
