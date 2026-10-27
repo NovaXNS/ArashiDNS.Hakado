@@ -21,6 +21,23 @@
                         <span class="text-sm font-medium text-gray-700 bg-gray-100 px-2 py-1 rounded">
                             @(string.IsNullOrEmpty(FormattedUid) ? "加载中..." : FormattedUid)
                         </span>
+                        @if (dohItems.Count > 0)
+                        {
+                            <div class="export-dropdown">
+                                <button type="button" class="btn-export btn-export-sm" onclick="toggleExportMenu(event)">
+                                    <i class="fas fa-download mr-1"></i> 导出
+                                    <i class="fas fa-chevron-down ml-1"></i>
+                                </button>
+                                <div id="export-menu" class="export-menu export-menu-right">
+                                    <button type="button" onclick="exportTopUrls(2)">
+                                        <i class="fas fa-file-download mr-1"></i> 最快前 2 个
+                                    </button>
+                                    <button type="button" onclick="exportTopUrls(4)">
+                                        <i class="fas fa-file-download mr-1"></i> 最快前 4 个
+                                    </button>
+                                </div>
+                            </div>
+                        }
                     </div>
                 </div>
             </div>
@@ -117,7 +134,12 @@
 
                                 <tr>
                                     <td class="font-medium">@(item.Name?.ToUpper())</td>
-                                    <td class="text-gray-600">@(item.URL?.Trim())</td>
+                                    <td class="text-gray-600">
+                                        <span class="url-text">@(item.URL?.Trim())</span>
+                                        <button type="button" class="copy-single-btn" onclick="copySingleUrl(this)" title="复制 URL">
+                                            <i class="fas fa-copy"></i>
+                                        </button>
+                                    </td>
                                     <td class="text-gray-600">@locationText</td>
                                     <td>
                                         <div class="flex items-center">
@@ -507,6 +529,118 @@
                     return 18;
                 }
             }
+
+            // ===== 复制和导出功能 =====
+            if (typeof window.exportTopUrls === 'undefined') {
+                window.showToast = function(message) {
+                    var toast = document.getElementById('js-toast');
+                    if (!toast) {
+                        toast = document.createElement('div');
+                        toast.id = 'js-toast';
+                        toast.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#374151;color:#fff;padding:10px 20px;border-radius:8px;font-size:14px;z-index:9999;opacity:0;transition:opacity 0.3s;pointer-events:none;';
+                        document.body.appendChild(toast);
+                    }
+                    toast.textContent = message;
+                    toast.style.opacity = '1';
+                    clearTimeout(window._toastTimer);
+                    window._toastTimer = setTimeout(function() {
+                        toast.style.opacity = '0';
+                    }, 2000);
+                };
+
+                window.copyTextToClipboard = function(text) {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(text).then(function() {
+                            window.showToast('已复制到剪贴板');
+                        }).catch(function() {
+                            window.fallbackCopy(text);
+                        });
+                    } else {
+                        window.fallbackCopy(text);
+                    }
+                };
+
+                window.fallbackCopy = function(text) {
+                    var textarea = document.createElement('textarea');
+                    textarea.value = text;
+                    textarea.style.position = 'fixed';
+                    textarea.style.left = '-9999px';
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    try {
+                        document.execCommand('copy');
+                        window.showToast('已复制到剪贴板');
+                    } catch (e) {
+                        window.showToast('复制失败');
+                    }
+                    document.body.removeChild(textarea);
+                };
+
+                window.getTableUrls = function() {
+                    var rows = document.querySelectorAll('.table-container .table tbody tr');
+                    var urls = [];
+                    rows.forEach(function(row) {
+                        var cells = row.querySelectorAll('td');
+                        if (cells.length >= 2) {
+                            var urlSpan = cells[1].querySelector('.url-text');
+                            var url = urlSpan ? urlSpan.textContent.trim() : cells[1].textContent.trim();
+                            if (url) urls.push(url);
+                        }
+                    });
+                    return urls;
+                };
+
+                window.copySingleUrl = function(btn) {
+                    var td = btn.closest('td');
+                    var urlSpan = td.querySelector('.url-text');
+                    if (urlSpan) {
+                        window.copyTextToClipboard(urlSpan.textContent.trim());
+                    }
+                };
+
+                window.toggleExportMenu = function(event) {
+                    event.stopPropagation();
+                    var menu = document.getElementById('export-menu');
+                    if (menu) {
+                        menu.classList.toggle('show');
+                    }
+                };
+
+                window.hideExportMenu = function() {
+                    var menu = document.getElementById('export-menu');
+                    if (menu) {
+                        menu.classList.remove('show');
+                    }
+                };
+
+                window.exportTopUrls = function(count) {
+                    window.hideExportMenu();
+                    var urls = window.getTableUrls().slice(0, count);
+                    if (urls.length === 0) {
+                        window.showToast('没有可导出的URL');
+                        return;
+                    }
+                    var content = urls.join('\n');
+                    var blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+                    var url = URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'top' + count + '-urls.txt';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    window.showToast('已导出最快 ' + urls.length + ' 个URL');
+                };
+
+                // 点击页面其他位置关闭下拉菜单（只绑定一次）
+                if (!window._exportMenuBound) {
+                    document.addEventListener('click', function() {
+                        window.hideExportMenu();
+                    });
+                    window._exportMenuBound = true;
+                }
+            }
         ");
 
         await JSRuntime.InvokeVoidAsync("initMap");
@@ -534,12 +668,12 @@
                         server.City = location.City;
                         server.Country = location.Country;
                         server.IP = ip;
-                    
+
                         // 在地图上添加标记
                         await AddServerToMap(server);
                         MappedServers++;
                         StateHasChanged();
-                    
+
                         // 添加短暂延迟避免请求过于频繁
                         await Task.Delay(200);
                         continue;
@@ -550,14 +684,14 @@
             {
                 Console.WriteLine($"获取服务器 {server.Name} 位置失败: {ex.Message}");
             }
-        
+
             // // 使用默认位置作为后备
             // server.Lat = 20 + (Random.Shared.NextDouble() - 0.5) * 30;
             // server.Lng = (Random.Shared.NextDouble() - 0.5) * 60;
             await AddServerToMap(server);
             MappedServers++;
             StateHasChanged();
-        
+
             // 添加短暂延迟避免请求过于频繁
             await Task.Delay(100);
         }
@@ -1030,5 +1164,93 @@
         height: 10px;
         margin-right: 5px;
         border-radius: 2px;
+    }
+
+    .btn-export {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.5rem 1rem;
+        border-radius: 0.5rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        border: 1px solid #a7f3d0;
+        background: #ecfdf5;
+        color: #059669;
+        transition: all 0.2s;
+    }
+
+        .btn-export:hover {
+            background: #d1fae5;
+            border-color: #6ee7b7;
+        }
+
+    .copy-single-btn {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        padding: 0 4px;
+        color: #3b82f6;
+        transition: color 0.2s;
+    }
+
+        .copy-single-btn:hover {
+            color: #1d4ed8;
+        }
+
+    .export-dropdown {
+        position: relative;
+        display: inline-block;
+    }
+
+    .export-menu {
+        display: none;
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        min-width: 160px;
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        z-index: 50;
+        overflow: hidden;
+    }
+
+        .export-menu.show {
+            display: block;
+        }
+
+        .export-menu button {
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+            color: #374151;
+            background: white;
+            border: none;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+        }
+
+            .export-menu button:hover {
+                background: #f3f4f6;
+                color: #059669;
+            }
+
+    .btn-export-sm {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+        border-radius: 0.375rem;
+    }
+
+        .btn-export-sm i {
+            font-size: 0.7rem;
+        }
+
+    .export-menu-right {
+        left: auto;
+        right: 0;
     }
 </style>
